@@ -1,0 +1,33 @@
+{
+  "manifest_version": 2,
+
+  "name": "Whatsapp Invisible Mode",
+  "description": "Whatsapp invisible mode for the Whatsapp Web client.",
+  "version": "1.0",
+
+  "icons": { "16": "icon-32.png",
+           "32": "icon-32.png",
+           "48": "icon-48.png",
+          "128": "icon-128.png" },
+
+  "background": {
+               "scripts": ["background.js"],
+               "persistent": false
+   },
+
+  "content_scripts": [
+    {
+      "matches": ["https://web.whatsapp.com/*"],
+     "run_at": "document_start",
+      "js": ["ws_invisible_main.js"]
+    }
+  ],
+
+	"permissions" : [
+		"declarativeContent",
+		"storage"
+	  ],
+
+  "externally_connectable": { "matches": ["*://web.whatsapp.com/*" ] }
+
+}
