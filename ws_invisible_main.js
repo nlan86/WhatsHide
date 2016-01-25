@@ -8,7 +8,7 @@ function main_hijack() {
 	var BASE_WEBSOCKET = WebSocket;
 	
 	//Main extension object
-	var WhatsDown = {
+	var WhatsHide = {
 
 		//Misc. Regexes
 		SEND_PRESENCE_REGEX: /\[\"Presence\"\,\s*\{\s*\"id\":["\d\w\.\,@]+\"type\"\s*:\s*\"(available)\"/g,
@@ -34,7 +34,7 @@ function main_hijack() {
 
  		//Logger for debugging
 		wsLog: function(str) {
-			if (WhatsDown.WS_SHOULD_LOG) {
+			if (WhatsHide.WS_SHOULD_LOG) {
 				console.log("WS Log: " + str);
 			}
 		},
@@ -44,7 +44,7 @@ function main_hijack() {
 			data = arguments[0];
 
 			if (typeof data != "string") {	//Data is binary message. Might be a presence or read-receipt.
-				WhatsDown.wsLog("Sending binary message");
+				WhatsHide.wsLog("Sending binary message");
 				var buf = data;
 				dataUint8 = new Uint8Array(data);
 
@@ -53,40 +53,40 @@ function main_hijack() {
 				if (n != -1) {	//check if outgoing message has any payload
 					var metric = dataUint8[n+1];	//represents WA's
 					var bitvector_byte = dataUint8[n+2];
-					var is_available = (bitvector_byte >> WhatsDown.WS_PRESENCE_BITVECTOR_AVAILABLE_OFFSET) & 0x1;
+					var is_available = (bitvector_byte >> WhatsHide.WS_PRESENCE_BITVECTOR_AVAILABLE_OFFSET) & 0x1;
 					if (is_available === 1) {
-						WhatsDown.wsLog("Caught Available message from client.");
+						WhatsHide.wsLog("Caught Available message from client.");
 
 						if (WS_DROP_OPTIONS[WS_DROP_AVAILABLE]) {
-							WhatsDown.wsLog("Dropping Available message.");
+							WhatsHide.wsLog("Dropping Available message.");
 							return;
 						}
 						else {
-							WhatsDown.wsLog("Letting Available message pass.");
+							WhatsHide.wsLog("Letting Available message pass.");
 						}
 					}
-					var is_unavailable = (bitvector_byte >> WhatsDown.WS_PRESENCE_BITVECTOR_UNAVAILABLE_OFFSET) & 0x1;
+					var is_unavailable = (bitvector_byte >> WhatsHide.WS_PRESENCE_BITVECTOR_UNAVAILABLE_OFFSET) & 0x1;
 					if (is_unavailable === 1) {
-						WhatsDown.wsLog("Caught Unavailable message from client.");
+						WhatsHide.wsLog("Caught Unavailable message from client.");
 					}
-					if (metric == WhatsDown.WS_METRIC_READ) {
-						WhatsDown.wsLog("Caught Read metric from client.");
+					if (metric == WhatsHide.WS_METRIC_READ) {
+						WhatsHide.wsLog("Caught Read metric from client.");
 						if (WS_DROP_OPTIONS[WS_DROP_READ_RECEIPT]) {
-							WhatsDown.wsLog("Dropping Read receipt.");
+							WhatsHide.wsLog("Dropping Read receipt.");
 							return;
 						}
 						else {
-							WhatsDown.wsLog("Letting Read receipt pass.");
+							WhatsHide.wsLog("Letting Read receipt pass.");
 						}
 					}
-					if (metric == WhatsDown.WS_METRIC_RECEIVED) {
-						WhatsDown.wsLog("Caught Received message from client.");
+					if (metric == WhatsHide.WS_METRIC_RECEIVED) {
+						WhatsHide.wsLog("Caught Received message from client.");
 						if (WS_DROP_OPTIONS[WS_DROP_RECEIVED]) {
-							WhatsDown.wsLog("Dropping Received message.");
+							WhatsHide.wsLog("Dropping Received message.");
 							return;
 						}
 						else {
-							WhatsDown.wsLog("Letting Received message pass.");
+							WhatsHide.wsLog("Letting Received message pass.");
 						}
 					}
 				}
@@ -96,15 +96,15 @@ function main_hijack() {
 
 		//Override WebSocket Send() with own
 		hijackSocketSend: function(ws) {
-			ws.send = WebSocket.prototype.send = WhatsDown.hijacked_send_no_online;
+			ws.send = WebSocket.prototype.send = WhatsHide.hijacked_send_no_online;
 		},
 
 		//Returns presence json or null if message is not presence
 		parsePresence: function(msg) {
-			var n = msg.indexOf(WhatsDown.PRESENCE_REGEX_LIGHT);
+			var n = msg.indexOf(WhatsHide.PRESENCE_REGEX_LIGHT);
 			if (n != -1) {	//found presence message
-				WhatsDown.wsLog("parsePresence: Found presence: " + msg);
-				var presence_json_str = msg.substring(n + WhatsDown.INCOMING_PRESENCE_PREFIX_LENGTH, msg.length - 1);
+				WhatsHide.wsLog("parsePresence: Found presence: " + msg);
+				var presence_json_str = msg.substring(n + WhatsHide.INCOMING_PRESENCE_PREFIX_LENGTH, msg.length - 1);
 				var presence_json = JSON.parse(presence_json_str);
 				if ("id" in presence_json && "type" in presence_json)
 					return presence_json;
@@ -125,17 +125,17 @@ function main_hijack() {
 		        };
 				var str = event.data;
 				if (typeof str != "string") return;	//incoming binary message. doesn't concern us
-				var n = str.indexOf(WhatsDown.PRESENCE_REGEX_LIGHT);
+				var n = str.indexOf(WhatsHide.PRESENCE_REGEX_LIGHT);
 				var presence_json, presence_json_str, presence_contact, presence_name, presence_type;
 				if (n != -1) {	//found presence message
-					presence_json_str = str.substring(n + WhatsDown.INCOMING_PRESENCE_PREFIX_LENGTH, str.length - 1);
+					presence_json_str = str.substring(n + WhatsHide.INCOMING_PRESENCE_PREFIX_LENGTH, str.length - 1);
 					presence_json = JSON.parse(presence_json_str);
 					if ("id" in presence_json && "type" in presence_json) {
 						presence_contact = window.Store.Contact._find(presence_json.id);
 						contact_name = presence_contact.name;
 						presence_type = presence_json.type;
 						if (presence_type == "available")
-							WhatsDown.wsLog(contact_name + " is " + presence_type);
+							WhatsHide.wsLog(contact_name + " is " + presence_type);
 					}
 				}
 			});
@@ -155,11 +155,11 @@ function main_hijack() {
 		        };
 				var str = event.data;
 				if (typeof str != "string") return;
-				var n = str.search(WhatsDown.PRESENCE_REGEX);
+				var n = str.search(WhatsHide.PRESENCE_REGEX);
 				if (n != -1) {
 					var presence_json_str = str.substring(n + 12, str.length - 1);
 					var presence_json = JSON.parse(presence_json_str);
-					WhatsDown.wsLog("Presence JSON: " + JSON.stringify(presence_json));
+					WhatsHide.wsLog("Presence JSON: " + JSON.stringify(presence_json));
 				}
 			});
 			ws.captured = true;
@@ -168,13 +168,13 @@ function main_hijack() {
 
 	//Hijack WebSocket object
 	WebSocket = function(a, b) {
-		WhatsDown.wsLog("Creating new WebSocket().");
+		WhatsHide.wsLog("Creating new WebSocket().");
 		var base;
 		//Call base constructor with 1 or 2 args
 		base = (typeof b !== "undefined") ? new BASE_WEBSOCKET(a, b) : new BASE_WEBSOCKET(a);
 		//Override WebSocket Send() with own
-		WhatsDown.hijackSocketSend(base);
-		WhatsDown.wsLog("Hijacked WebSocket.Send() with own");
+		WhatsHide.hijackSocketSend(base);
+		WhatsHide.wsLog("Hijacked WebSocket.Send() with own");
 		return base;
 	};
 	 	
