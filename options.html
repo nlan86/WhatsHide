@@ -9,8 +9,10 @@
 		.status {}
 		.logo { margin-top: 2px;}
 		.option {text-align: left}
+		.refresh {text-align: center; margin-top: 10px; text-decoration: underline; }
+		.refresh a:link { color: black; }
 	</style>
-	<title>WhatsApp Invisible Mode</title>
+	<title>WhatsHide</title>
 </head>
 <body>
 
@@ -25,7 +27,10 @@
 		<input type="checkbox" id="drop_received">Don't send read receipts for messages (blue double checkmarks)
 	</div>
 	<div class="option">
-		<input type="checkbox" id="drop_read_receipt">Don't send any receipts for message (gray double checkmarks)
+		<input type="checkbox" id="drop_read_receipt">Don't send any receipts for messages (gray double checkmarks)
+	</div>
+	<div class="refresh" id="refresh">
+		<a id="refresh-text" href="#">Apply</a>
 	</div>
 </div>
 

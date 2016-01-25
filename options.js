@@ -14,9 +14,18 @@ function restore_options() {
   });
 }
 
+function refresh_tab() {
+  chrome.tabs.executeScript({
+    code: 'location.reload()'
+  });
+}
+
 document.addEventListener('DOMContentLoaded', function(){
 	for (o in WS_DROP_OPTIONS) {
 		document.getElementById(o).onclick = save_options;
+		
 	}
+	document.getElementById("refresh-text").onclick = refresh_tab;
+
 	restore_options();
 });

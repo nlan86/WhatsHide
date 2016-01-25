@@ -1,8 +1,8 @@
 {
   "manifest_version": 2,
 
-  "name": "Whatsapp Invisible Mode",
-  "description": "Invisible mode for the Whatsapp Web client.",
+  "name": "WhatsHide",
+  "description": "Invisible mode for the WhatsApp Web client.",
   "version": "1.0",
 
   "icons": { "16": "icon-32.png",
@@ -25,7 +25,7 @@
 
   "page_action": {
           "default_icon": "icon-48.png",
-          "default_title": "WhatsApp Invisible Mode",
+          "default_title": "WhatsHide",
           "default_popup": "options.html" 
    },
 
