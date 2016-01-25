@@ -9,17 +9,13 @@
            "32": "icon-32.png",
            "48": "icon-48.png",
           "128": "icon-128.png" },
-
-  "background": {
-               "scripts": ["background.js"],
-               "persistent": false
-   },
+          
 
   "content_scripts": [
     {
       "matches": ["https://web.whatsapp.com/*"],
      "run_at": "document_start",
-      "js": ["ws_commons.js", "ws_invisible_main.js"]
+      "js": ["ws_commons.js", "main_whatshide.js"]
     }
   ],
 
