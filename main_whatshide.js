@@ -51,7 +51,7 @@ function main_hijack() {
 				var dataStr = String.fromCharCode.apply(null, dataUint8);
 				var n = dataStr.search(/,/g);	
 				if (n != -1) {	//check if outgoing message has any payload
-					var metric = dataUint8[n+1];	//represents WA's
+					var metric = dataUint8[n+1];	//represents WA's code for each type of message
 					var bitvector_byte = dataUint8[n+2];
 					var is_available = (bitvector_byte >> WhatsHide.WS_PRESENCE_BITVECTOR_AVAILABLE_OFFSET) & 0x1;
 					if (is_available === 1) {
