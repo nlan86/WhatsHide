@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+	<meta charset="utf-8">
+	<style>
+		.container { width: 400px; padding: 10px; text-align: center}
+		.textbox {margin-top: 10px;}
+		.save {margin-top: 10px; }
+		.margintop10px { margin-top: 10px; }
+		.status {}
+		.option {text-align: left}
+	</style>
+	<title>WhatsApp Invisible Mode</title>
+</head>
+<body>
+
+<div class="container">
+	<div class="logo">
+		<img src="icon-48.png">
+	</div>
+	<div class="option">
+		<input type="checkbox" id="drop_available">Hide my "Online" status
+	</div>
+	<div class="option">
+		<input type="checkbox" id="drop_received">Don't send read receipts for messages (blue double checkmarks)
+	</div>
+	<div class="option">
+		<input type="checkbox" id="drop_read_receipt">Don't send any receipts for message (gray double checkmarks)
+	</div>
+</div>
+
+<script src="ws_commons.js"></script>
+<script src="options.js"></script>
+</body>
+</html>

@@ -1,24 +1,22 @@
-function main() {
+//Main function that will be injected to the DOM to override the Web client functionalities
+function main_hijack() {
 
-	//Script Globals
+	//Injected script globals
+	//--------------
 
-	//Keep original WebSocket object
+	//Keep copy of original WebSocket object
 	var BASE_WEBSOCKET = WebSocket;
 	
-	//Main WhosUp object
-	var WhosUp = {
+	//Main extension object
+	var WhatsDown = {
+
 		//Misc. Regexes
 		SEND_PRESENCE_REGEX: /\[\"Presence\"\,\s*\{\s*\"id\":["\d\w\.\,@]+\"type\"\s*:\s*\"(available)\"/g,
 		PRESENCE_REGEX: /\[[\x22\x27]Presence[\x22\x27]\s*\,.*[\x22\x27]id[\x22\x27]\:/,
 		PRESENCE_REGEX_LIGHT: '["Presence",{"id":',	//Simple string search to prevent heavy load
 		INCOMING_PRESENCE_PREFIX_LENGTH: 12,
 
-		//Deafult behaviors
-		WS_SHOULD_DROP_AVAILABLE: true,
-		WS_SHOULD_DROP_READ_RECEIPT: false,
-		WS_SHOULD_DROP_RECEIVED: false,
-
-		//Misc defaults
+		//Misc defaults for future features
 		WS_SHOULD_LOG: true,
 		WS_SHOULD_RENEW_SUBSCRIPTIONS: false,		//Set if presences should be subscribed to every so and so seconds. Not generally necessary since subscriptions are (likely) permanent
 		WS_PRESENCE_SUBSCRIBE_INTERVAL: 15000,		//Interval for presence subscription. Default = 2.5min
@@ -26,72 +24,87 @@ function main() {
 		WS_STORE_CHECK_TIMEOUT: 2000,		//Time to sleep between attempts to find Store. Will be increased for each failed attempt
 		WS_STORE_CHECK_TIMEOUT_FINE: 500,
 
-		//Protocol metric values
+		//Protocol metric constants
  		WS_METRIC_PRESENCE: 8,
  		WS_METRIC_READ: 11,
  		WS_METRIC_RECEIVED: 13,
+ 		WS_PRESENCE_BITVECTOR_AVAILABLE_OFFSET: 5,
+ 		WS_PRESENCE_BITVECTOR_UNAVAILABLE_OFFSET: 4,
 
- 		active_presences: {},
 
  		//Logger for debugging
 		wsLog: function(str) {
-			if (WhosUp.WS_SHOULD_LOG) {
+			if (WhatsDown.WS_SHOULD_LOG) {
 				console.log("WS Log: " + str);
 			}
 		},
 
-		subscribeAllPresences: function() {
-			// return;	//TODO REMOVE
-			
-			var total_contacts = window.Store.Chat.models.length;
-			var max_contacts = Math.min(total_contacts, 6);
+		//Wraps WebSocket.Send(): drops "Available" messages, lets all others pass using original Send()
+		hijacked_send_no_online: function() {
+			data = arguments[0];
 
-			//TODO subscribe to all contacts or just chats
-			// var max = window.Store.Contact.models.length;
-			var contact, contact_id;
-			var run_on_chat = true;	//TODO COMME IL FAUT
-			for (var i=0; i<max_contacts; i++) {
-				if (run_on_chat) {
-					contact = window.Store.Chat.models[i].contact; //take contact from active chats
+			if (typeof data != "string") {	//Data is binary message. Might be a presence or read-receipt.
+				WhatsDown.wsLog("Sending binary message");
+				var buf = data;
+				dataUint8 = new Uint8Array(data);
+
+				var dataStr = String.fromCharCode.apply(null, dataUint8);
+				var n = dataStr.search(/,/g);	
+				if (n != -1) {	//check if outgoing message has any payload
+					var metric = dataUint8[n+1];	//represents WA's
+					var bitvector_byte = dataUint8[n+2];
+					var is_available = (bitvector_byte >> WhatsDown.WS_PRESENCE_BITVECTOR_AVAILABLE_OFFSET) & 0x1;
+					if (is_available === 1) {
+						WhatsDown.wsLog("Caught Available message from client.");
+
+						if (WS_DROP_OPTIONS[WS_DROP_AVAILABLE]) {
+							WhatsDown.wsLog("Dropping Available message.");
+							return;
+						}
+						else {
+							WhatsDown.wsLog("Letting Available message pass.");
+						}
+					}
+					var is_unavailable = (bitvector_byte >> WhatsDown.WS_PRESENCE_BITVECTOR_UNAVAILABLE_OFFSET) & 0x1;
+					if (is_unavailable === 1) {
+						WhatsDown.wsLog("Caught Unavailable message from client.");
+					}
+					if (metric == WhatsDown.WS_METRIC_READ) {
+						WhatsDown.wsLog("Caught Read metric from client.");
+						if (WS_DROP_OPTIONS[WS_DROP_READ_RECEIPT]) {
+							WhatsDown.wsLog("Dropping Read receipt.");
+							return;
+						}
+						else {
+							WhatsDown.wsLog("Letting Read receipt pass.");
+						}
+					}
+					if (metric == WhatsDown.WS_METRIC_RECEIVED) {
+						WhatsDown.wsLog("Caught Received message from client.");
+						if (WS_DROP_OPTIONS[WS_DROP_RECEIVED]) {
+							WhatsDown.wsLog("Dropping Received message.");
+							return;
+						}
+						else {
+							WhatsDown.wsLog("Letting Received message pass.");
+						}
+					}
 				}
-				else {
-					contact = window.Store.Contact.models[i];	//take contact from all contacts
-				}
-				if (!contact) continue;
-				if (!contact.isUser || !contact.isWAContact) continue;	//Don't subscribe to groups or non-wa-users
-				contact_id = contact.id;
-				contact_name = contact.name;
-				window.Store.Wap.presenceSubscribe(contact_id);
-				WhosUp.wsLog("Subscribed to: " + contact_name);
 			}
-			WhosUp.wsLog("Subscribed all.");
+			return BASE_WEBSOCKET.prototype.send.apply(this,arguments);	//If not dropped, send message using regular WebSocket.Send()
+		},	//end hijacked_send_no_online
+
+		//Override WebSocket Send() with own
+		hijackSocketSend: function(ws) {
+			ws.send = WebSocket.prototype.send = WhatsDown.hijacked_send_no_online;
 		},
 
-		//Wait for WA Web to create window.Store. When finally created, add interval call to subscribeAllPresences()
-		waitForStoreTillSubscribe: function() {
-			if (window.Store && window.Store.Chat && window.Store.Contact) {
-				//window.Store is ready, call subscription interval
-				WhosUp.wsLog("Store ready. Calling presenece subscriber.");
-				window.setTimeout(WhosUp.subscribeAllPresences, WhosUp.WS_FIRST_PRESENCE_SUBSCRIBE_INTERVAL);	//Wait another 2 secs, then run presence subscriber for first time
-				if (WhosUp.WS_SHOULD_RENEW_SUBSCRIPTIONS) {
-					window.setInterval(WhosUp.subscribeAllPresences, WhosUp.WS_PRESENCE_SUBSCRIBE_INTERVAL);	//Then run presence subscriber every ~2 minutes					
-					WhosUp.wsLog("Will renew subscriptions in " + WhosUp.WS_PRESENCE_SUBSCRIBE_INTERVAL + "ms.");
-				}
-			}
-			else {
-				//window.Store not ready yet, check again later			
-				WhosUp.WS_STORE_CHECK_TIMEOUT += WhosUp.WS_STORE_CHECK_TIMEOUT_FINE;	//Increase timeout by 500ms for each failed attempt.
-				window.setTimeout(WhosUp.waitForStoreTillSubscribe, WhosUp.WS_STORE_CHECK_TIMEOUT);
-				WhosUp.wsLog("Store not ready yet. Checking again in " + WhosUp.WS_STORE_CHECK_TIMEOUT + "ms.");
-			}
-		},
-
-		//returns presence json or null if not presence
+		//Returns presence json or null if message is not presence
 		parsePresence: function(msg) {
-			var n = msg.indexOf(WhosUp.PRESENCE_REGEX_LIGHT);
+			var n = msg.indexOf(WhatsDown.PRESENCE_REGEX_LIGHT);
 			if (n != -1) {	//found presence message
-				WhosUp.wsLog("parsePresence: Found presence: " + msg);
-				var presence_json_str = msg.substring(n + WhosUp.INCOMING_PRESENCE_PREFIX_LENGTH, msg.length - 1);
+				WhatsDown.wsLog("parsePresence: Found presence: " + msg);
+				var presence_json_str = msg.substring(n + WhatsDown.INCOMING_PRESENCE_PREFIX_LENGTH, msg.length - 1);
 				var presence_json = JSON.parse(presence_json_str);
 				if ("id" in presence_json && "type" in presence_json)
 					return presence_json;
@@ -99,123 +112,7 @@ function main() {
 			return null;	//nothing to return if no id or availability found in message
 		},
 
-		handleIncomingPresence: function(presence_json) {
-			if (!presence_json) return null;
-			if ("id" in presence_json && "type" in presence_json) {
-				var presence_contact, contact_name, contact_id, presence_type;
-				presence_contact = window.Store.Contact._find(presence_json.id);
-				contact_id = presence_json.id;
-				contact_name = presence_contact.name;
-				presence_type = presence_json.type;
-				if (presence_type == "available")
-				{
-					WhosUp.wsLog(contact_name + " is " + presence_type);
-					if (!contact_id in WhosUp.active_presences) {
-						WhosUp.active_presences.contact_id = presence_contact;
-					}
-					
-					//TODO:
-					//ADD TO ALL_PRESENCES IF NOT ALREADY THERE
-					//UPDATE DISPLAY
-				}
-				if (presence_type == "unavailable") {
-					// WhosUp.wsLog(contact_name + " is " + presence_type);
-					if (contact_id in WhosUp.active_presences) {
-						delete WhosUp.active_presences.contact_id;
-					}
-					//TODO:
-					//CHECK IF IN TABLE
-					//IF YES, REMOVE FROM ALL_PRESENCES
-					//UPDATE DISPLAY
-				}
-			}
-		},
-
-		//Replaces WebSocket receive() with own function to parse incoming messages
-		hijackSocketReceive: function(ws) {
-			if (typeof ws.captured == 'undefined') {	//Verify listener not already added
-				WhosUp.wsLog('hijackSocketReceive: hijacking receive');
-				ws.addEventListener('message', function(e) {
-					var event = {
-						event: 'websocket_recv',
-			            from: location,
-			            data: e.data,
-			            url: e.target.URL
-			        };
-					var str = event.data;
-					if (typeof str != "string") return;	//Incoming binary message. can't handle
-					var presence_json = WhosUp.parsePresence(str);
-					WhosUp.handleIncomingPresence(presence_json);
-				});
-				ws.captured = true;
-			}
-		},
-
-		//Wraps WebSocket.Send(): drops "Available" message and sends all others using original Send()
-		hijacked_send_no_online: function() {
-			data = arguments[0];
-
-			if (typeof data != "string") {	//Data is binary message. May be presence or read receipt
-				WhosUp.wsLog("Sending binary message");
-				var buf = data;
-				dataUint8 = new Uint8Array(data);
-
-				var dataStr = String.fromCharCode.apply(null, dataUint8);
-				// WhosUp.wsLog("data: " + dataStr);
-				var n = dataStr.search(/,/g);	
-				if (n != -1) {
-					// WhosUp.wsLog("Found comma at index: " + n + ", data length is " + dataUint8.length);
-
-					var metric = dataUint8[n+1];
-					var n = dataUint8[n+2];
-
-					var is_available = (n >> 5) & 0x1;
-					if (is_available === 0x1) {
-						WhosUp.wsLog("Caught AVAILABLE message from client.");
-						if (WhosUp.WS_SHOULD_DROP_AVAILABLE) {
-							WhosUp.wsLog("Dropping Available message.");
-							return;
-						}
-						else {
-							WhosUp.wsLog("Letting Available message pass.");
-						}
-					}
-					var is_unavailable = (n >> 4) & 0x1;
-					if (is_unavailable === 0x1) {
-						WhosUp.wsLog("Caught UNAVAILABLE message");
-					}
-					if (metric == WhosUp.WS_METRIC_READ) {
-						WhosUp.wsLog("Caught READ metric from client.");
-						if (WhosUp.WS_SHOULD_DROP_READ_RECEIPT) {
-							WhosUp.wsLog("Dropping Read receipt.");
-							return;
-						}
-						else {
-							WhosUp.wsLog("Letting Read receipt pass.");
-						}
-					}
-					if (metric == WhosUp.WS_METRIC_RECEIVED) {
-						WhosUp.wsLog("Caught RECEIVED message from client.");
-						if (WhosUp.WS_SHOULD_DROP_RECEIVED) {
-							WhosUp.wsLog("Dropping Received message.");
-							return;
-						}
-						else {
-							WhosUp.wsLog("Letting Received message pass.");
-						}
-					}
-				}
-			}
-			return BASE_WEBSOCKET.prototype.send.apply(this,arguments);	//If not dropped, send message using regular WebSocket.Send()
-
-		},	//End hijacked_send_no_online
-
-		hijackSocketSend: function(ws) {
-			//Override WebSocket send function with own
-			ws.send = WebSocket.prototype.send = WhosUp.hijacked_send_no_online;
-		}
-
-	};	//End WhosUp class object
+	};	//End class object
 
 	function hijackedReceive(ws) {
 		if (typeof ws.captured == 'undefined') {	//Verify listener not already added
@@ -228,17 +125,17 @@ function main() {
 		        };
 				var str = event.data;
 				if (typeof str != "string") return;	//incoming binary message. doesn't concern us
-				var n = str.indexOf(WhosUp.PRESENCE_REGEX_LIGHT);	
+				var n = str.indexOf(WhatsDown.PRESENCE_REGEX_LIGHT);
 				var presence_json, presence_json_str, presence_contact, presence_name, presence_type;
 				if (n != -1) {	//found presence message
-					presence_json_str = str.substring(n + WhosUp.INCOMING_PRESENCE_PREFIX_LENGTH, str.length - 1);
+					presence_json_str = str.substring(n + WhatsDown.INCOMING_PRESENCE_PREFIX_LENGTH, str.length - 1);
 					presence_json = JSON.parse(presence_json_str);
 					if ("id" in presence_json && "type" in presence_json) {
 						presence_contact = window.Store.Contact._find(presence_json.id);
 						contact_name = presence_contact.name;
 						presence_type = presence_json.type;
 						if (presence_type == "available")
-							WhosUp.wsLog(contact_name + " is " + presence_type);
+							WhatsDown.wsLog(contact_name + " is " + presence_type);
 					}
 				}
 			});
@@ -258,48 +155,53 @@ function main() {
 		        };
 				var str = event.data;
 				if (typeof str != "string") return;
-				var n = str.search(WhosUp.PRESENCE_REGEX);
+				var n = str.search(WhatsDown.PRESENCE_REGEX);
 				if (n != -1) {
 					var presence_json_str = str.substring(n + 12, str.length - 1);
 					var presence_json = JSON.parse(presence_json_str);
-					WhosUp.wsLog("Presence JSON: " + JSON.stringify(presence_json));
+					WhatsDown.wsLog("Presence JSON: " + JSON.stringify(presence_json));
 				}
 			});
 			ws.captured = true;
 		}
 	}
 
-	//Wrapper for WebSocket.send()
-	//TODO REMOVE
-	var hijacked_send = function() {
-		data = arguments[0];
-		console.trace("Send trace");
-		if (typeof data == "string") {
-			console.log("Sent: " + data);
-			//TODO what here?
-		}
-		return BASE_WEBSOCKET.prototype.send.apply(this,arguments);
-	}
-
-
 	//Hijack WebSocket object
 	WebSocket = function(a, b) {
+		WhatsDown.wsLog("Creating new WebSocket().");
 		var base;
-		//Call base constructor with whether 1 or 2 args
+		//Call base constructor with 1 or 2 args
 		base = (typeof b !== "undefined") ? new BASE_WEBSOCKET(a, b) : new BASE_WEBSOCKET(a);
-		//Add message receive event to WebSocket
-		WhosUp.hijackSocketReceive(base);
 		//Override WebSocket Send() with own
-		WhosUp.hijackSocketSend(base);
+		WhatsDown.hijackSocketSend(base);
+		WhatsDown.wsLog("Hijacked WebSocket.Send() with own");
 		return base;
 	};
+	 	
+}	//end main_hijack()
 
-	//COMMENTED-OUT BECAUSE BLOCKED. TODO UNCOMMENT SEE IF BLOCK REMOVED
-	WhosUp.waitForStoreTillSubscribe(); 			//Wait till window.Store is ready, then start subscribing to 
-	
+
+//Retrieve settings from storage or set to defaults
+function get_settings() {
+  chrome.storage.sync.get(WS_DROP_OPTIONS, function(opts) {
+  		for (o in WS_DROP_OPTIONS) {	//verify all options available in storage or set to defaults
+  			if (!o in opts) {
+  				return;
+  			}
+  		}
+  		WS_DROP_OPTIONS = opts;
+  		var commons_injected_script = document.createElement('script');
+		var inj_str = 'var WS_DROP_AVAILABLE = "drop_available"; var WS_DROP_READ_RECEIPT = "drop_read_receipt"; var WS_DROP_RECEIVED = "drop_received";';
+		inj_str += 'var WS_DROP_OPTIONS = ' + JSON.stringify(WS_DROP_OPTIONS) + ';';
+		commons_injected_script.appendChild(document.createTextNode(inj_str));
+		(document.body || document.head || document.documentElement).appendChild(commons_injected_script);
+  });
 }
 
-// Inject hijacking functions to DOM
-var script = document.createElement('script');
-script.appendChild(document.createTextNode('(' + main + ')();'));
-(document.body || document.head || document.documentElement).appendChild(script);
+//Get settings from Storage and inject them to DOM
+get_settings();
+
+//Inject hijacking script to DOM
+var main_injected_script = document.createElement('script');
+main_injected_script.appendChild(document.createTextNode('(' + main_hijack + ')();'));
+(document.body || document.head || document.documentElement).appendChild(main_injected_script);
